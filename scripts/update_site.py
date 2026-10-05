@@ -19,7 +19,7 @@ from itdshot.site import TEMPLATES_PATH, extract, fetch  # noqa: E402
 
 def main(args: list[str]):
     if len(args) == 2:
-        js, css = (Path(arg).read_text() for arg in args)
+        js, css = (Path(arg).read_text(encoding="utf-8") for arg in args)
         classes = extract(js, css)
     elif not args:
         classes, css = fetch()
@@ -27,9 +27,9 @@ def main(args: list[str]):
         sys.exit(__doc__)
 
     (TEMPLATES_PATH / "classes.json").write_text(
-        json.dumps(classes, indent=4, ensure_ascii=False) + "\n"
+        json.dumps(classes, indent=4, ensure_ascii=False) + "\n", encoding="utf-8"
     )
-    (TEMPLATES_PATH / "site.css").write_text(css)
+    (TEMPLATES_PATH / "site.css").write_text(css, encoding="utf-8")
     print(f"saved {len(classes)} modules and {len(css)} bytes of css")
 
 

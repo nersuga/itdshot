@@ -1,10 +1,12 @@
 """Сборка GIF: скриншот поста + кадры видео поверх превью."""
 
+from base64 import b64encode
 from dataclasses import dataclass
+from hashlib import sha1
 from pathlib import Path
 from shutil import copyfileobj
 from subprocess import run
-from tempfile import TemporaryDirectory
+from tempfile import TemporaryDirectory, gettempdir
 from urllib.request import Request, urlopen
 
 from imageio_ffmpeg import count_frames_and_secs, get_ffmpeg_exe
@@ -32,6 +34,35 @@ def _download(url: str, path: Path):
     request = Request(url, headers={"User-Agent": "Mozilla/5.0 itdshot"})
     with urlopen(request, timeout=60) as response, path.open("wb") as file:
         copyfileobj(response, file)
+
+
+VIDEOS_PATH = Path(gettempdir()) / "itdshot"
+
+
+def local_video(url: str) -> Path:
+    """Скачать видео один раз за запуск (и между запусками, пока жив temp)"""
+    path = VIDEOS_PATH / (sha1(url.encode()).hexdigest() + ".mp4")
+    if not path.exists():
+        print("download video")
+        VIDEOS_PATH.mkdir(parents=True, exist_ok=True)
+        partial = path.with_suffix(".part")
+        _download(url, partial)
+        partial.replace(path)
+    return path
+
+
+def first_frame(video: Path) -> tuple[str, int, int]:
+    """Первый кадр видео как data:url и его размеры (если API не прислал превью)"""
+    frame = video.with_suffix(".jpg")
+    if not frame.exists():
+        run(
+            [get_ffmpeg_exe(), "-y", "-loglevel", "error", "-i", str(video),
+             "-frames:v", "1", "-q:v", "2", str(frame)],
+            check=True,
+        )
+    with Image.open(frame) as image:
+        width, height = image.size
+    return "data:image/jpeg;base64," + b64encode(frame.read_bytes()).decode(), width, height
 
 
 def _even(value: float) -> int:
@@ -67,10 +98,10 @@ def make_gif(
             for url, box in videos
             if box.clip_width >= 1 and box.clip_height >= 1
         ]
-        for number, (url, box) in enumerate(visible):
-            print(f"download video {number + 1}/{len(visible)}")
-            video = tmp_path / f"video{number}.mp4"
-            _download(url, video)
+        sources = []
+        for url, box in visible:
+            video = local_video(url)
+            sources.append(video)
             durations.append(count_frames_and_secs(str(video))[1])
 
         duration = min(max(durations, default=0) or max_duration, max_duration)
@@ -84,7 +115,7 @@ def make_gif(
             _mask(mask, width, height, round(box.radius * scale))
 
             video_input = 1 + number * 2
-            inputs += ["-stream_loop", "-1", "-t", f"{duration}", "-i", str(tmp_path / f"video{number}.mp4")]
+            inputs += ["-stream_loop", "-1", "-t", f"{duration}", "-i", str(sources[number])]
             inputs += ["-loop", "1", "-framerate", str(fps), "-t", f"{duration}", "-i", str(mask)]
 
             crop_x = round((box.clip_x - box.x) * scale)

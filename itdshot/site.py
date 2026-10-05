@@ -128,7 +128,7 @@ def fetch() -> tuple[dict, str]:
     bundle = Path(js_match.group(1)).stem
     cache = CACHE_PATH / f"{bundle}.json"
     if cache.exists():
-        data = json.loads(cache.read_text())
+        data = json.loads(cache.read_text(encoding="utf-8"))
         return data["classes"], data["css"]
 
     print(f"site updated ({bundle}), extracting classes")
@@ -151,15 +151,15 @@ def fetch() -> tuple[dict, str]:
 
     classes = extract(js, css)
     CACHE_PATH.mkdir(parents=True, exist_ok=True)
-    cache.write_text(json.dumps({"classes": classes, "css": css}, ensure_ascii=False))
+    cache.write_text(json.dumps({"classes": classes, "css": css}, ensure_ascii=False), encoding="utf-8")
     return classes, css
 
 
 def bundled() -> tuple[dict, str]:
     """Встроенные классы и CSS (на момент последнего обновления itdshot)"""
     return (
-        json.loads((TEMPLATES_PATH / "classes.json").read_text()),
-        (TEMPLATES_PATH / "site.css").read_text(),
+        json.loads((TEMPLATES_PATH / "classes.json").read_text(encoding="utf-8")),
+        (TEMPLATES_PATH / "site.css").read_text(encoding="utf-8"),
     )
 
 

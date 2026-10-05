@@ -1,7 +1,8 @@
+import sys
 from pathlib import Path
 
 import click
-from itd import ITDClient, Post
+from itd import ITDConfig, Post, init_client
 from itd.api.posts import get_post
 from itd.enums import AttachType
 
@@ -37,7 +38,6 @@ def has_video(post: Post) -> bool:
 @click.argument(
     "output", required=False, type=click.Path(dir_okay=False, writable=True)
 )
-@click.argument("token", envvar="ITD_TOKEN")
 def post_screenshot(
     dark: bool,
     width: int,
@@ -48,10 +48,21 @@ def post_screenshot(
     max_duration: float,
     id_or_url: str,
     output: str | None,
-    token: str,
 ):
     print("init itd client")
-    client = ITDClient(token)
+    # отдельная сессия itdshot: при первом запуске itd-sdk спросит почту и пароль
+    # (или QR-код) и сохранит ее, дальше вход автоматический. токен из браузера
+    # не нужен: refresh-токены одноразовые и общий с браузером сервер отзывает
+    client = init_client(
+        "itdshot",
+        config=ITDConfig(
+            captcha_solve=True,  # капча решается в браузере camoufox (itd-sdk[captcha])
+            captcha_headless="virtual" if sys.platform == "linux" else False,
+            dwell_enabled=False,  # не отправлять статистику просмотров
+            post_update_stats=False,
+            post_auto_view=False,
+        ),
+    )
 
     if id_or_url.startswith("http"):
         id = id_or_url.split("post/")[-1]

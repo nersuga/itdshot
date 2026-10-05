@@ -1,18 +1,19 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+import sys
 from subprocess import run
 from urllib.parse import quote, urlparse
 
 from itd import Post
 from itd.enums import AttachType
-from itd.span import Span
+from itd.models.span import Span
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from markupsafe import Markup, escape
 from playwright.sync_api import sync_playwright
 
 from itdshot import site
-from itdshot.video import VideoBox, make_gif
+from itdshot.video import VideoBox, first_frame, local_video, make_gif
 
 base_path = Path(__file__).parent
 templates_path = base_path / "templates"
@@ -108,13 +109,15 @@ def media_of(post: Post, videos: list[Media]) -> list[Media]:
     media = []
     for attach in post.attachments:
         if attach.type == AttachType.VIDEO:
-            item = Media(
-                attach.thumbnail_url or attach.url,
-                attach.width,
-                attach.height,
-                video_url=attach.url,
-                video_index=len(videos),
-            )
+            src, width, height = attach.thumbnail_url, attach.width, attach.height
+            if not src or not width or not height:
+                # бывает, что API не присылает превью или размеры видео: берем первый кадр
+                try:
+                    src, width, height = first_frame(local_video(attach.url))
+                except Exception as e:
+                    print(f"warning: can't get the video frame ({e})")
+                    src = src or ""
+            item = Media(src, width, height, video_url=attach.url, video_index=len(videos))
             videos.append(item)
             media.append(item)
         elif attach.type in (AttachType.IMAGE, AttachType.MEDIA):
@@ -364,7 +367,7 @@ def edit_html(
         animated=animated,
         site_css=Markup(site_css),
     )
-    out_path.write_text(html)
+    out_path.write_text(html, encoding="utf-8")
     return videos
 
 
@@ -397,6 +400,22 @@ VIDEO_BOXES_JS = """
 """
 
 
+def copy_file(path: Path):
+    """Скопировать файл в буфер обмена (вставляется как файл в мессенджеры)"""
+    if sys.platform == "win32":
+        literal = str(path.absolute()).replace("'", "''")
+        run(
+            ["powershell", "-NoProfile", "-Command", f"Set-Clipboard -LiteralPath '{literal}'"],
+            check=True,
+        )
+    else:
+        run(
+            ["xclip", "-i", "-selection", "clipboard", "-t", "text/uri-list"],
+            input=path.absolute().as_uri().encode("utf-8"),
+            check=True
+        )
+
+
 def _cached(route):
     url = urlparse(route.request.url)
     file = CACHE_PATH / url.path.strip("/").replace("/", "_")
@@ -420,12 +439,13 @@ def screenshot(
 ):
     """Снять пост. Если path — .gif и в посте есть видео, получится анимация."""
     with sync_playwright() as p:
-        browser = p.firefox.launch()
+        # chromium: firefox в playwright не умеет скриншоты с прозрачным фоном (omit_background)
+        browser = p.chromium.launch()
         # ширина больше брейкпоинта сайта (1174px), чтобы применились десктопные стили
         page = browser.new_page(
             viewport={"width": 1280, "height": 720}, device_scale_factor=scale
         )
-        html = out_path.read_text()
+        html = out_path.read_text(encoding="utf-8")
         page.route(
             RENDER_URL,
             lambda route: route.fulfill(body=html, content_type="text/html; charset=utf-8"),
@@ -458,11 +478,7 @@ def screenshot(
             browser.close()
 
     if clipboard:
-        run(
-            ["xclip", "-i", "-selection", "clipboard", "-t", "text/uri-list"],
-            input=path.absolute().as_uri().encode("utf-8"),
-            check=True
-        )
+        copy_file(path)
         print("copied")
     else:
         print(f"saved to {path}")

@@ -256,8 +256,7 @@
 {#- текст через слой корректора и красной ручки, как компонент сайта -#}
 {%- macro tool_text(p, extra, with_signatures) -%}
 {#- без пробелов между тегами: у текста поста white-space: pre-wrap -#}
-<span class="{{ c.red_pen.textLayer }}{% if extra.corrections %} {{ c.red_pen.withCorrections }}{% endif %}" data-post-tool-text>
-<span data-corrector-text="{{ p.id }}">{{ render_text(p.content, p.spans, extra.marks) }}</span>
+<span class="{{ c.red_pen.textLayer }}{% if extra.corrections %} {{ c.red_pen.withCorrections }}{% endif %}" data-post-tool-text><span data-corrector-text="{{ p.id }}">{{ render_text(p.content, p.spans, extra.marks) }}</span>
 {%- if extra.corrections -%}
 <span class="{{ c.red_pen.overlay }}" data-red-pen-overlay data-corrections="{{ extra.corrections | tojson | forceescape }}"></span>
 {%- endif -%}
@@ -302,9 +301,11 @@
 
                     {%- if post_media %}{{ media(post_media, true) }}{% endif -%}
 
-                    {%- if post.poll %}{{ poll(post.poll) }}{% endif -%}
+                    {#- не просто if: у Poll __bool__ значит "голосовал ли я" -#}
+                    {%- if post.poll is not none %}{{ poll(post.poll) }}{% endif -%}
 
-                    {%- if post.original_post -%}
+                    {#- не просто if: у Post __len__ это длина текста, репост пустого поста пропал бы -#}
+                    {%- if post.original_post is not none -%}
                     {%- set orig = post.original_post -%}
                     <div class="{{ pc.originalPost }}{{ notebook_classes(orig_extra, pc.originalNotebook) }}">
                         <div class="{{ pc.originalPostHeader }}">
