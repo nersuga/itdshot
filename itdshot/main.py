@@ -1,4 +1,3 @@
-import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,13 +11,14 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from markupsafe import Markup, escape
 from playwright.sync_api import sync_playwright
 
+from itdshot import site
 from itdshot.video import VideoBox, make_gif
 
 base_path = Path(__file__).parent
 templates_path = base_path / "templates"
 out_path = base_path.parent / "out.html"
 
-SITE_URL = "https://xn--d1ah4a.com/"
+SITE_URL = site.SITE_URL
 # страница открывается как будто с сайта: шрифты и иконки там подключаются
 # относительными путями, а шрифты с другого origin (file://) браузер не грузит
 RENDER_URL = SITE_URL + "__itdshot__"
@@ -321,12 +321,14 @@ def edit_html(
     width: int = DEFAULT_WIDTH,
     raw: dict | None = None,
     animated: bool = False,
+    offline: bool = False,
 ) -> list[Media]:
     """Собрать out.html. raw — сырой ответ API поста (для данных, которых нет в itd-sdk).
 
     Возвращает видео из поста (по порядку их индексов в разметке).
+    offline - не обращаться к сайту за актуальными классами, взять встроенные.
     """
-    classes = json.loads((templates_path / "classes.json").read_text())
+    classes, site_css = site.load(offline)
     textures = corrector_textures(classes["corrector_textures"])
 
     videos: list[Media] = []
@@ -360,7 +362,7 @@ def edit_html(
         dark=dark,
         width=width,
         animated=animated,
-        site_css=Markup((templates_path / "site.css").read_text()),
+        site_css=Markup(site_css),
     )
     out_path.write_text(html)
     return videos

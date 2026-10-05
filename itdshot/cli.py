@@ -26,6 +26,9 @@ def has_video(post: Post) -> bool:
 @click.option(
     "--static", help="Save PNG even if the post has a video", is_flag=True
 )
+@click.option(
+    "--offline", help="Use bundled site classes instead of fetching the current ones", is_flag=True
+)
 @click.option("--fps", help="GIF frame rate", default=20, show_default=True)
 @click.option(
     "--max-duration", help="Max GIF length in seconds", default=10.0, show_default=True
@@ -40,6 +43,7 @@ def post_screenshot(
     width: int,
     scale: float,
     static: bool,
+    offline: bool,
     fps: int,
     max_duration: float,
     id_or_url: str,
@@ -68,7 +72,7 @@ def post_screenshot(
         path = Path(output or f"{post.id}{extension}")
 
     animated = path.suffix.lower() == ".gif"
-    videos = edit_html(post, dark, width, raw, animated)
+    videos = edit_html(post, dark, width, raw, animated, offline)
     print("screenshot")
     screenshot(
         path,
