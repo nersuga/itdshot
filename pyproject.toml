@@ -7,7 +7,7 @@ requires-python = ">=3.14"
 dependencies = [
     "click>=8.4.1",
     "imageio-ffmpeg>=0.6.0",
-    "itd-sdk[captcha]>=2.10.0",
+    "itd-sdk[captcha]>=2.10.1",
     "jinja2>=3.1.6",
     "pillow>=12.2.0",
     "playwright>=1.62.0",
@@ -28,8 +28,3 @@ build-backend = 'uv_build'
 [tool.uv.build-backend]
 module-name = 'itdshot'
 module-root = ''
-
-[tool.uv.sources]
-# тетрадь, корректор и красная ручка (itd-sdk#71) не вошли в 2.10.0 на PyPI;
-# после выхода 2.10.1 эту секцию можно удалить и поднять версию выше
-itd-sdk = { git = "https://github.com/itd-sdk/itd-sdk", rev = "18f6227" }
