@@ -3,7 +3,6 @@ from pathlib import Path
 
 import click
 from itd import ITDConfig, Post, init_client
-from itd.api.posts import get_post
 from itd.enums import AttachType
 
 from itdshot.main import DEFAULT_WIDTH, edit_html, screenshot
@@ -72,8 +71,6 @@ def post_screenshot(
     print(
         f"found post content={post.content[:250].replace('\n', ' ') or 'empty'} attachments={len(post.attachments)}"
     )
-    # тетрадь, корректор и красная ручка есть только в сырых данных
-    raw = get_post(client, post.id).json()["data"]
 
     clipboard = output in ("copy", "c", "clipboard")
     extension = ".gif" if has_video(post) and not static else ".png"
@@ -83,7 +80,7 @@ def post_screenshot(
         path = Path(output or f"{post.id}{extension}")
 
     animated = path.suffix.lower() == ".gif"
-    videos = edit_html(post, dark, width, raw, animated, offline)
+    videos = edit_html(post, dark, width, animated, offline)
     print("screenshot")
     screenshot(
         path,

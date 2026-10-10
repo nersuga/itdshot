@@ -116,11 +116,12 @@
 {%- endmacro -%}
 
 {%- macro avatar(user, size) -%}
+{%- set src = avatar_of(user) -%}
 <div class="{{ c.avatar.avatar }} {{ c.avatar[size] }}">
-    {%- if is_url(user.avatar) -%}
-    <img src="{{ user.avatar }}" alt="{{ user.display_name }}" />
+    {%- if is_url(src) -%}
+    <img src="{{ src }}" alt="{{ user.display_name }}" />
     {%- else -%}
-    <span class="{{ c.avatar.emoji }}">{{ user.avatar or "👤" }}</span>
+    <span class="{{ c.avatar.emoji }}">{{ src or "👤" }}</span>
     {%- endif -%}
 </div>
 {%- endmacro -%}

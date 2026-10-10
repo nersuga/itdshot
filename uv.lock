@@ -389,7 +389,7 @@ wheels = [
 [[package]]
 name = "itd-sdk"
 version = "2.10.0"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/itd-sdk/itd-sdk?rev=18f6227#18f62272f939424691ee981e3323e5257967c82a" }
 dependencies = [
     { name = "lxml" },
     { name = "platformdirs" },
@@ -397,10 +397,6 @@ dependencies = [
     { name = "requests" },
     { name = "sseclient-py" },
     { name = "telegramify-markdown" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/b8/ed/4c7aa014ef17982649061ec8806e277078841beb99c01333494049744cb2/itd_sdk-2.10.0.tar.gz", hash = "sha256:7a8e5f258f7a42864309000da0e620419551f8304776376fca7eb8e9980fa82e", size = 64408, upload-time = "2026-10-09T17:07:06.132Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/79/22/347818aef6881d26e9d7cdbc97b28d31f42a5da3277f066b275f4e30c623/itd_sdk-2.10.0-py3-none-any.whl", hash = "sha256:9693387ccf796214b0a8e3346bee0fc94c486002901d4035de4d705d440fc8f2", size = 87753, upload-time = "2026-10-09T17:07:07.983Z" },
 ]
 
 [package.optional-dependencies]
@@ -431,7 +427,7 @@ dev = [
 requires-dist = [
     { name = "click", specifier = ">=8.4.1" },
     { name = "imageio-ffmpeg", specifier = ">=0.6.0" },
-    { name = "itd-sdk", extras = ["captcha"], specifier = ">=2.9.2" },
+    { name = "itd-sdk", extras = ["captcha"], git = "https://github.com/itd-sdk/itd-sdk?rev=18f6227" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "pillow", specifier = ">=12.2.0" },
     { name = "playwright", specifier = ">=1.62.0" },

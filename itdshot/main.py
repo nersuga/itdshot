@@ -19,6 +19,9 @@ base_path = Path(__file__).parent
 templates_path = base_path / "templates"
 out_path = base_path.parent / "out.html"
 
+# шаблонизатор Jinja2: откуда брать шаблоны и экранирование HTML (текст поста не станет разметкой)
+env = Environment(loader=FileSystemLoader(templates_path), autoescape=select_autoescape())
+
 SITE_URL = site.SITE_URL
 # страница открывается как будто с сайта: шрифты и иконки там подключаются
 # относительными путями, а шрифты с другого origin (file://) браузер не грузит
@@ -49,7 +52,7 @@ class Media:
 
 @dataclass
 class Extras:
-    """Данные постов, которых нет в itd-sdk: тетрадь, корректор, красная ручка."""
+    """Тетрадь, корректор и красная ручка поста, подготовленные для шаблона (как их показывает сайт)."""
 
     notebook: str | None = None  # grid / ruled
     marks: list[dict] = field(default_factory=list)  # замазанный текст
@@ -125,69 +128,71 @@ def media_of(post: Post, videos: list[Media]) -> list[Media]:
     return media
 
 
-def _alive(items: list[dict], now: datetime) -> list[dict]:
-    """Корректор и ручка временные: на сайте показываются только до endsAt."""
-    result = []
-    for item in items:
-        ends_at = item.get("endsAt")
-        if ends_at is None or datetime.fromisoformat(ends_at.replace("Z", "+00:00")) > now:
-            result.append(item)
-    return result
+def _optional_field(item, name: str):
+    # поле, которого может не быть в этой версии itd-sdk (getattr с default тут не подходит:
+    # модели itd-sdk на неизвестное поле бросают не AttributeError)
+    fields = {key for cls in type(item).__mro__ for key in getattr(cls, "__annotations__", {})}
+    return getattr(item, name) if name in fields else None
 
 
-def _created_at(item: dict) -> int:
-    if item.get("createdAtMicros") is not None:
-        return int(item["createdAtMicros"])
-    if item.get("createdAt"):
-        return int(datetime.fromisoformat(item["createdAt"].replace("Z", "+00:00")).timestamp() * 1e6)
-    return 0
+def avatar_of(user) -> str:
+    """Аватар, как его показывает сайт: ссылка на картинку или эмодзи"""
+    # itd-sdk 2.10+: avatar - эмодзи клана, а поле avatar из API - possible_url_avatar
+    return _optional_field(user, "possible_url_avatar") or user.avatar
 
 
-def _unique_actors(items: list[dict]) -> list[dict]:
+def _alive(item) -> bool:
+    """Корректор и ручка временные: сайт показывает их только до endsAt"""
+    ends_at = _optional_field(item, "ends_at")  # пока itd-sdk не хранит endsAt, считаем живыми
+    return ends_at is None or ends_at > datetime.now(timezone.utc)
+
+
+def _rank(item) -> tuple[int, str]:
+    # как на сайте: на одном фрагменте остаётся более поздняя правка, при равенстве - с большим id
+    micros = _optional_field(item, "created_at_micros")
+    if micros is None:
+        micros = round(item.created_at.timestamp() * 1_000_000) if item.created_at else 0
+    return micros, str(item.id)
+
+
+def _actors(items) -> list[dict]:
     actors = {}
     for item in items:
-        actor = item.get("actor") or {}
-        actors.setdefault(actor.get("id"), actor)
+        actors.setdefault(item.actor.id, {"username": item.actor.username, "displayName": item.actor.display_name})
     return list(actors.values())
 
 
-def extras_of(raw: dict | None) -> Extras:
-    if not raw:
+def extras_of(post: Post | None) -> Extras:
+    if post is None:
         return Extras()
 
-    now = datetime.now(timezone.utc)
-    notebook = (raw.get("notebook") or {}).get("style")
-    corrector = raw.get("corrector")
-    red_pen = raw.get("redPen")
+    corrector = post.corrector if post.is_loaded("corrector") else None
+    red_pen = post.red_pen if post.is_loaded("red_pen") else None
 
-    marks = _alive(corrector.get("marks") or [], now) if corrector else []
+    marks = [mark for mark in corrector.correctors if _alive(mark)] if corrector else []
+    claims = [claim for claim in red_pen.claims if _alive(claim)] if red_pen else []
+    corrections = red_pen.red_pens if claims else []  # правки пропадают вместе с заявками
 
-    claims = []
-    corrections = []
-    if red_pen:
-        claims = red_pen.get("claims") or ([red_pen["claim"]] if red_pen.get("claim") else [])
-        claims = _alive(claims, now)
-        if claims:
-            corrections = red_pen.get("corrections") or []
+    latest: dict[tuple[int, int], tuple] = {}
+    for item in [*marks, *corrections]:
+        key = (item.start, item.end)
+        if key not in latest or _rank(item) > latest[key]:
+            latest[key] = _rank(item)
 
-    # если на одном фрагменте и замазка, и правка, остаётся более поздняя
-    latest: dict[tuple, tuple] = {}
-    for kind, item in [("paint", m) for m in marks] + [("pen", c) for c in corrections]:
-        key = (item["start"], item["end"])
-        rank = (_created_at(item), str(item.get("id")))
-        if key not in latest or rank > latest[key][0]:
-            latest[key] = (rank, item.get("id"))
-
-    def keep(item: dict) -> bool:
-        return latest[(item["start"], item["end"])][1] == item.get("id")
+    def keep(item) -> bool:
+        return latest[(item.start, item.end)] == _rank(item)
 
     return Extras(
-        notebook=notebook if notebook in ("grid", "ruled") else None,
-        marks=[m for m in marks if keep(m)],
-        corrections=[c for c in corrections if keep(c)],
-        corrector_actors=_unique_actors(marks),
-        red_pen_actors=_unique_actors(claims) if corrections else [],
-        has_tools=bool(corrector or red_pen),
+        notebook=post.notebook.value if post.notebook else None,
+        marks=[{"id": str(m.id), "start": m.start, "end": m.end} for m in marks if keep(m)],
+        corrections=[
+            {"id": str(c.id), "start": c.start, "end": c.end, "replacement": c.replacement}
+            for c in corrections
+            if keep(c)
+        ],
+        corrector_actors=_actors(marks),
+        red_pen_actors=_actors(claims) if corrections else [],
+        has_tools=corrector is not None or red_pen is not None,
     )
 
 
@@ -322,11 +327,10 @@ def edit_html(
     post: Post,
     dark: bool = True,
     width: int = DEFAULT_WIDTH,
-    raw: dict | None = None,
     animated: bool = False,
     offline: bool = False,
 ) -> list[Media]:
-    """Собрать out.html. raw — сырой ответ API поста (для данных, которых нет в itd-sdk).
+    """Собрать out.html.
 
     Возвращает видео из поста (по порядку их индексов в разметке).
     offline - не обращаться к сайту за актуальными классами, взять встроенные.
@@ -339,13 +343,12 @@ def edit_html(
     orig = post.original_post
     orig_media = media_of(orig, videos) if orig is not None else []
 
-    env = Environment(
-        loader=FileSystemLoader(templates_path), autoescape=select_autoescape()
-    )
-    env.globals.update(
+    html = env.get_template("post.html").render(
+        # классы сайта и функции форматирования, которые вызываются из шаблона
         classes=classes,
         pin_sizes=PIN_SIZES,
         is_url=is_url,
+        avatar_of=avatar_of,
         count=count,
         short_date=short_date,
         relative_time=relative_time,
@@ -354,14 +357,12 @@ def edit_html(
         render_text=lambda text, spans, marks=[]: render_text(
             text, spans, classes["text"], marks, textures
         ),
-    )
-
-    html = env.get_template("post.html").render(
+        # сам пост
         post=post,
         post_media=post_media,
-        post_extra=extras_of(raw),
+        post_extra=extras_of(post),
         orig_media=orig_media,
-        orig_extra=extras_of((raw or {}).get("originalPost")),
+        orig_extra=extras_of(orig),
         dark=dark,
         width=width,
         animated=animated,
